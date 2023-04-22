@@ -1,0 +1,95 @@
+---
+title: "HNP Participation by Census Tract"
+author: "Kelly Wilkin"
+date: "`r Sys.Date()`"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r admin, echo=FALSE, warning=FALSE, message=FALSE}
+# load libraries
+library(tidyverse)
+library(sf)
+library(tidycensus)
+library(tigris)
+library(glue)
+library(mapview)
+
+
+# define directories
+acsdir = '/Users/kwilkin/Documents/acs'
+acs5dir = file.path(acsdir, 'api_data', 'acs5_data')
+mapdir = '/Users/kwilkin/Documents/maps'
+hnpdir = file.path(mapdir, '..', 'hnp')
+```
+
+```{r load-data, echo=FALSE, warning=FALSE, message=FALSE}
+# load hnp frequency distribution by geoid
+hnpgeo = readRDS(file.path(hnpdir, 'hnp_freq_by_tract_aug2021.rds'))
+
+# load acs5 tract-level summary data
+acs5dat = readRDS(file.path(acsdir, 'acs5_tract_data.rds'))
+
+# load index of cbsas (2020 definitions)
+cbsaref = readRDS(file.path(mapdir, 'cbsa_2020_delineation_file.rds'))
+
+# load nevada and california shapefiles
+nv_ca_tracts = 
+  do.call(bind_rows,
+          map(c('32', '06') %>% as.list(),
+              ~ read_sf(file.path(mapdir,
+                                  'tracts',
+                                  glue('tl_2020_{.x}_tract'),
+                                  glue('tl_2020_{.x}_tract.shp')))))
+```
+
+```{r spatial-data, echo=FALSE, warning=FALSE, message=FALSE}
+# get hnp tracts
+hnp_tracts = nv_ca_tracts %>%
+  filter(GEOID %in% hnpgeo$geoid)
+
+
+# reno csa tracts (plot to check)
+reno_csa_counties = cbsaref %>%
+  filter(CSACode == '456') %>%
+  mutate(fips = paste0(FIPSStateCode, FIPSCountyCode)) %>%
+  pluck('fips')
+
+# subset tracts shapefile to reno-carson-fernley csa
+reno_csa_tracts = nv_ca_tracts %>%
+  mutate(fips = paste0(STATEFP, COUNTYFP)) %>%
+  filter(fips %in% reno_csa_counties) %>%
+  select(-fips)
+
+# erase water features from reno csa tracts and plot
+reno_csa_nowater = reno_csa_tracts %>%
+  filter(ALAND > 0)
+
+
+# join hnp population counts
+hnp_tract_freq = reno_csa_tracts %>%
+  left_join(.,
+            hnpgeo %>%
+              select(geoid, freq),
+            by = c('GEOID' = 'geoid'))
+```
+
+## Introduction
+
+This presentation shows a map of HNP participation (in counts of persons) by Census tract. It uses all Census tracts in the Reno-Carson-Fernley Consolidated Statistical Area (CSA), which comprises Carson City and Washoe, Lyon, Storey, and Douglas counties.
+
+## Participation Map
+
+```{r map, echo=FALSE, warning=FALSE, message=FALSE}
+mapview(
+  hnp_tract_freq,
+  zcol = 'freq',
+  alpha.regions = 0.7,
+  legend = TRUE,
+  layer.name = 'HNP Participants'
+)
+```
+
